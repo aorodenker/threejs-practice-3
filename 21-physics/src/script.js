@@ -1,13 +1,32 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import * as dat from 'lil-gui';
-import CANNON from 'cannon';
+import * as CANNON from 'cannon-es';
+//* npm install --save cannon-es
+//* https://github.com/pmndrs/cannon-es
+//* uses world.addBody(body) instead of world.add(body)
 
 // Canvas
 const canvas = document.querySelector('canvas.webgl');
 
 // Scene
 const scene = new THREE.Scene();
+
+// Sounds
+const hitSound = new Audio('/sounds/hit.mp3');
+
+const playHitSound = (e) => {
+    const impactStrength = e.contact.getImpactVelocityAlongNormal();
+    if (impactStrength > 1.5) {
+        hitSound.volume = Math.random();
+        hitSound.currentTime = 0;
+        hitSound.play()
+        .then()
+        .catch((err => {
+            console.log('Sounds require interaction!')
+        }));
+    };
+};
 
 // Textures
 const textureLoader = new THREE.TextureLoader();
@@ -23,20 +42,15 @@ const environmentMapTexture = cubeTextureLoader.load([
 ]);
 
 // Physics
-//* create cannon world - https://schteppe.github.io/cannon.js/docs/classes/World.html
 const world = new CANNON.World();
 
-//* add gravity to cannon world
-//* world.gravity.set(x,y,z) - Vec3
-//* (0, -9.82, 0) = Earth gravity
+world.broadphase = new CANNON.SAPBroadphase(world);
+world.allowSleep = true;
 world.gravity.set(0, -9.82, 0);
 
 // Materials
 const defaultMaterial = new CANNON.Material('default');
 
-//* contact material - defines what happens when two materials meet
-//* CANNON.ContactMaterial(material1, material2, options:object)
-//* https://schteppe.github.io/cannon.js/docs/classes/ContactMaterial.html
 const defaultContactMaterial = new CANNON.ContactMaterial(
     defaultMaterial,
     defaultMaterial,
@@ -46,23 +60,18 @@ const defaultContactMaterial = new CANNON.ContactMaterial(
     }
 );
 
-//* add contact material to scene THEN set defaultContactMaterial to contact material
 world.addContactMaterial(defaultContactMaterial);
 world.defaultContactMaterial = defaultContactMaterial;
 
 // Objects
 
 // Floor
-//* 0 mass for body that wont move
-//* can add multiple bodies to another body
 const floorShape = new CANNON.Plane();
 const floorBody = new CANNON.Body({
     mass: 0,
     shape: floorShape
 });
 
-//* cannon only supports Quaternion with setFromAxisAngle for rotation
-//* body.quaternion.setFromAxisAngle(rotationAxis:Vec3, rotationAngle:num)
 floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(-1, 0, 0), Math.PI / 2);
 
 world.addBody(floorBody);
@@ -134,7 +143,7 @@ renderer.setSize(sizes.width, sizes.height);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
 // Utils
-const objectsToUpdate = [];
+let objectsToUpdate = [];
 
 // Sphere
 const sphereGeometry = new THREE.SphereGeometry(1, 20, 20);
@@ -144,7 +153,6 @@ const sphereMaterial = new THREE.MeshStandardMaterial({
     envMap: environmentMapTexture
 });
 
-//* one function to create three.js sphere AND cannon sphere
 const createSphere = (radius, position) => {
     const mesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
 
@@ -161,7 +169,9 @@ const createSphere = (radius, position) => {
     });
 
     body.position.copy(position);
-    world.add(body);
+    body.addEventListener('collide', playHitSound);
+
+    world.addBody(body);
 
     objectsToUpdate.push({
         mesh: mesh,
@@ -185,8 +195,6 @@ const createBox = (width, height, depth, position) => {
     mesh.position.copy(position);
     scene.add(mesh);
 
-    //* CANNON.Box(Vec3)
-    //* different from THREE.BoxGeometry(), cannon measures from center of box, cannon = half of 3js box
     const shape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
     const body = new CANNON.Body({
         mass: 1,
@@ -195,7 +203,9 @@ const createBox = (width, height, depth, position) => {
     });
 
     body.position.copy(position);
-    world.add(body);
+    body.addEventListener('collide', playHitSound);
+
+    world.addBody(body);
 
     objectsToUpdate.push({
         mesh: mesh,
@@ -204,7 +214,6 @@ const createBox = (width, height, depth, position) => {
 };
 
 createSphere(0.5, {x: 0, y: 3, z: 0});
-// createBox(1, 1, 1, {x: 0, y: 3, z: 0});
 
 // Animate
 const clock = new THREE.Clock();
@@ -236,21 +245,25 @@ debugObject.createBox = () => {
         }
         );
 };
+debugObject.reset = () => {
+    console.log('reset');
+    for (const object of objectsToUpdate) {
+        object.body.removeEventListener('collide', playHitSound);
+        world.removeBody(object.body);
+        scene.remove(object.mesh);
+        objectsToUpdate = [];
+    }
+};
 
 gui.add(debugObject, 'createSphere');
 gui.add(debugObject, 'createBox');
+gui.add(debugObject, 'reset');
 
 const tick = () => {
     const elapsedTime = clock.getElapsedTime();
     const deltaTime = elapsedTime - oldElapsedTime;
     oldElapsedTime = elapsedTime;
 
-    // Wind
-
-    // Update Physics World
-    //* https://schteppe.github.io/cannon.js/docs/classes/World.html#method_step
-    //* world.step(fixedTimeStepSize:num, timeSinceLastCalled:num, maxStepsPerCall:num)
-    //* 1/60 because we want 60 fps, can step 3 times to catch up with potential delay
     world.step(1/60, deltaTime, 3);
 
     for (const object of objectsToUpdate) {
@@ -264,86 +277,3 @@ const tick = () => {
 };
 
 tick();
-
-/* ----- PHYSICS ----- */
-//* Raycaster: https://threejs.org/docs/#api/en/core/Raycaster
-//* for more realistic libraries, better to use external libraries
-//? 3D Physics Libraries:
-//* Ammo.js
-//* Cannon.js
-//* Oimo.js
-//? 2D Physics Libraries:
-//* Matter.js
-//* P2.js
-//* Planck.js
-//* Box2D.js
-//? Solution trying to combine Three.js with physics libraries:
-//* Physijs
-
-/* ----- CANNON.JS ----- */
-//? applyForce - apply force from specific time in space (not necessarily on the Body's surface)
-//* ex: wind, small push on domino, strong force like Angry Birds
-
-//? applyImpulse - like applyForce, but instead of adding to force, will add to velocity
-//* bypasses force and applies directly to velocity
-//* ex: engine speeding up a car, falling, sliding
-
-//? applyLocalForce - same as applyForce, but coordinates are local to the Body (0,0,0 = center of body)
-
-//? applyLocalImpulse - same as applyImpulse, but local to Body
-
-//* shape in cannon = geometry in three.js
-//* CANNON.Sphere(radius:num) - https://schteppe.github.io/cannon.js/docs/classes/Sphere.html
-// const sphereShape = new CANNON.Sphere(0.5);
-
-//* body in cannon = object in three.js - https://schteppe.github.io/cannon.js/docs/classes/Body.html
-//* CANNON.Body(object) - mass:num, position:Vec3, shape:var(CANNON.<shape>)
-// const sphereBody = new CANNON.Body({
-//     mass: 1,
-//     position: new CANNON.Vec3(0, 3, 0),
-//     shape: sphereShape
-// });
-
-//* applyLocalForce(force:Vec3, localPoint:Vec3)
-// sphereBody.applyLocalForce(new CANNON.Vec3(150, 0, 0), new CANNON.Vec3(0, 0, 0));
-
-//* add body to world
-// world.addBody(sphereBody);
-
-// const sphere = new THREE.Mesh(
-//     new THREE.SphereGeometry(0.5, 32, 32),
-//     new THREE.MeshStandardMaterial({
-//         metalness: 0.3,
-//         roughness: 0.4,
-//         envMap: environmentMapTexture,
-//         envMapIntensity: 0.5
-//     })
-// );
-
-// sphere.castShadow = true;
-// sphere.position.y = 0.5;
-// scene.add(sphere);
-
-// const tick = () => {
-//     const elapsedTime = clock.getElapsedTime();
-//     const deltaTime = elapsedTime - oldElapsedTime;
-//     oldElapsedTime = elapsedTime;
-
-    // Wind
-    //* apply wind to the sphere only
-    //* applyForce(force:Vec3, worldPoint:Vec3)
-    // sphereBody.applyForce(new CANNON.Vec3(-0.5, 0, 0), sphereBody.position);
-
-    // Update Physics World
-    //* https://schteppe.github.io/cannon.js/docs/classes/World.html#method_step
-    //* world.step(fixedTimeStepSize:num, timeSinceLastCalled:num, maxStepsPerCall:num)
-    //* 1/60 because we want 60 fps, can step 3 times to catch up with potential delay
-    // world.step(1/60, deltaTime, 3);
-
-    //* update three.js sphere position to match physics
-    // sphere.position.copy(sphereBody.position);
-
-    // controls.update();
-    // renderer.render(scene, camera);
-    // window.requestAnimationFrame(tick);
-// };
