@@ -69,3 +69,22 @@ const tick = () => {
 };
 
 tick();
+
+/* ----- SHADERS ----- */
+//? Data sent to the shader:
+//* - vertices coordinates
+//* - mesh transformation
+//* - information about camera
+//* - colors
+//* - textures
+//* - lights
+//* - fog
+//* - etc.
+//* GPU processes all of this data and follows the shader's instructions
+
+// Types of Shaders
+//* Uniforms: info that doesn't change between vertices or fragments, can be used by both shaders
+//* Varying: data sent from Vertex Shader to Fragment Shader, data is interpolated between vertices
+//* Attributes: info that changes between each vertex (like their position), only useable on Vertex Shader
+//? Vertex Shader - position each vertex of the geometry
+//? Fragment Shader - colors each visible pixel of the geometry, executes after Vertex Shader
