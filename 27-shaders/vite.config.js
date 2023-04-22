@@ -1,4 +1,5 @@
 const isCodeSandbox = 'SANDBOX_URL' in process.env || 'CODESANDBOX_HOST' in process.env
+import glsl from 'vite-plugin-glsl';
 
 export default {
     root: 'src/',
@@ -14,5 +15,8 @@ export default {
         outDir: '../dist',
         emptyOutDir: true,
         sourcemap: true
-    }
+    },
+    plugins: [
+        glsl()
+    ]
 }
